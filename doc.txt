@@ -1,0 +1,25 @@
+--> in terminal:
+pip install poetry
+python -m poetry install
+switch python interpreter in IDE
+docker run -d ` --name movie_container `-p 5432:5432 ` -e POSTGRES_PASSWORD=secret ` -e POSTGRES_DB=movie_db `-v ${PWD}/scripts:/scripts `postgres
+docker exec -ti movie_container createdb -U postgres movie_db
+
+--> put in alembic.ini:
+sqlalchemy.url = postgresql+psycopg://postgres:secret@localhost:5432/movie_db
+
+--> in terminal:
+python -m alembic upgrade head
+
+--> check databse using:
+docker exec -it movie_container psql -U postgres -d movie_db
+\dt
+\d directors
+\d movies
+\d genres
+\d movie_genres
+\d movie_ratings
+
+--> fill database using seed:
+Get-Content scripts/seeddb.sql | docker exec -i movie_container psql -U postgres -d movie_db
+then check by running scripts/seed_check.py

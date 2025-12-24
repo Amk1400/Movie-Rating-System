@@ -1,0 +1,20 @@
+[project]
+name = "movie-rating-system"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Amk1400",email = "kavoshamirmohammad@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "sqlalchemy (>=2.0.45,<3.0.0)",
+    "alembic (>=1.17.2,<2.0.0)",
+    "psycopg2-binary (>=2.9.11,<3.0.0)",
+    "psycopg[binary] (>=3.3.2,<4.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
