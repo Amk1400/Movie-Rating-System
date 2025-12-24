@@ -1,11 +1,11 @@
-class MovieAPI:
-    """Placeholder movie API holder."""
+class RatingAPI:
+    """Placeholder rating API holder."""
 
     def __init__(self, service) -> None:
-        """Construct MovieAPI.
+        """Construct RatingAPI.
 
         Args:
-            service: movie service.
+            service: rating service.
 
         Returns:
             None: nothing.
