@@ -76,6 +76,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     movie_api = MovieAPI(movie_service)
     rating_api = RatingAPI(rating_service)
 
+    application.include_router(movie_api.router)
+
     application.state = AppState(
         director_api=director_api,
         genre_api=genre_api,
