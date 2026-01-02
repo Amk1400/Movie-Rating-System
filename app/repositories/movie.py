@@ -133,3 +133,64 @@ class MovieRepository(BaseRepository):
                 )
 
             return items, total_items
+
+    def get_by_id(self, movie_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch single movie by id with related metadata.
+
+        Args:
+            movie_id (int): movie primary key.
+
+        Returns:
+            Optional[Dict[str, Any]]: raw movie dict or None.
+
+        Raises:
+            None: returns None if not found.
+        """
+        with self._session_factory() as session:
+            m = (
+                session.query(Movie)
+                .options(
+                    joinedload(Movie.director),
+                    selectinload(Movie.genres).joinedload(MovieGenre.genre),
+                )
+                .filter(Movie.id == movie_id)
+                .one_or_none()
+            )
+            if m is None:
+                return None
+
+            # average rating and count
+            row = (
+                session.query(
+                    func.avg(MovieRating.score).label("avg"),
+                    func.count(MovieRating.id).label("count"),
+                )
+                .filter(MovieRating.movie_id == movie_id)
+                .one()
+            )
+            avg = float(row.avg) if row.avg is not None else None
+            count = int(row.count or 0)
+
+            genre_names: List[str] = []
+            for mg in m.genres:
+                g = getattr(mg, "genre", None)
+                if g is not None and getattr(g, "name", None) is not None:
+                    genre_names.append(g.name)
+
+            director_dict = {
+                "id": getattr(m.director, "id", None),
+                "name": getattr(m.director, "name", None),
+                "birth_year": getattr(m.director, "birth_year", None),
+                "description": getattr(m.director, "description", None),
+            }
+
+            return {
+                "id": m.id,
+                "title": m.title,
+                "release_year": m.release_year,
+                "director": director_dict,
+                "genres": genre_names,
+                "cast": m.cast,
+                "average_rating": avg,
+                "ratings_count": count,
+            }

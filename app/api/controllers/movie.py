@@ -1,18 +1,14 @@
 from typing import Any, Optional
 
-from fastapi import APIRouter, Query, HTTPException, FastAPI
+from fastapi import APIRouter, Query, HTTPException, FastAPI, Path
 
-from app.api.schemas.base import ErrorResponse
-from app.api.schemas.movie import MoviesListResponse
-from app.exceptions.exceptions import ValidationError
+from app.api.schemas.base import ErrorResponse, ErrorDetail
+from app.api.schemas.movie import MoviesListResponse, MovieDetailResponse
+from app.exceptions.exceptions import ValidationError, NotFoundError
 
 
 class MovieAPI:
-    """Movie API router holder.
-
-    Attributes:
-        router (APIRouter): router exposing movie endpoints.
-    """
+    """Movie API router holder."""
 
     def __init__(self, service: Any) -> None:
         """Construct MovieAPI.
@@ -22,9 +18,6 @@ class MovieAPI:
 
         Returns:
             None: nothing.
-
-        Raises:
-            None: initializer.
         """
         self._service = service
         self.router = APIRouter(prefix="/api/v1/movies", tags=["movies"])
@@ -35,17 +28,13 @@ class MovieAPI:
 
         Returns:
             None: nothing.
-
-        Raises:
-            None: internal registration.
         """
 
         @self.router.get(
             "/",
             response_model=MoviesListResponse,
             responses={
-                422: {"model": ErrorResponse, "description": "Invalid input"},
-                400: {"description": "Validation error"},
+                422: {"model": ErrorResponse},
                 500: {"description": "Internal server error"},
             },
         )
@@ -77,11 +66,46 @@ class MovieAPI:
                 )
                 return MoviesListResponse(status="success", data=data)
             except ValidationError as ve:
-                payload = {"status": "failure", "error": {"code": 422, "message": str(ve)}}
-                raise HTTPException(status_code=422, detail=payload)
-            except Exception:
-                payload = {"status": "failure", "error": {"code": 500, "message": "internal server error"}}
-                raise HTTPException(status_code=500, detail=payload)
+                error_detail = ErrorDetail(code=422, message=str(ve))
+                error_response = ErrorResponse(status="failure", error=error_detail)
+                raise HTTPException(status_code=422, detail=error_response.model_dump())
+            except Exception as ex:
+                raise HTTPException(status_code=500, detail=str(ex))
+
+        @self.router.get(
+            "/{movie_id}",
+            response_model=MovieDetailResponse,
+            responses={
+                404: {"model": ErrorResponse},
+                422: {"model": ErrorResponse},
+                500: {"description": "Internal server error"},
+            },
+        )
+        async def get_movie(movie_id: int = Path(..., gt=0)) -> MovieDetailResponse:
+            """Get detailed movie by id.
+
+            Args:
+                movie_id (int): movie id path parameter.
+
+            Returns:
+                MovieDetailResponse: detailed movie response.
+
+            Raises:
+                HTTPException: on not found or other errors.
+            """
+            try:
+                data = self._service.get_movie_detail(movie_id)
+                return MovieDetailResponse(status="success", data=data)
+            except NotFoundError as nf:
+                error_detail = ErrorDetail(code=404, message=str(nf))
+                error_response = ErrorResponse(status="failure", error=error_detail)
+                raise HTTPException(status_code=404, detail=error_response.model_dump())
+            except ValidationError as ve:
+                error_detail = ErrorDetail(code=422, message=str(ve))
+                error_response = ErrorResponse(status="failure", error=error_detail)
+                raise HTTPException(status_code=422, detail=error_response.model_dump())
+            except Exception as ex:
+                raise HTTPException(status_code=500, detail=str(ex))
 
     def register(self, app: FastAPI) -> None:
         """Include the API router into FastAPI app.
@@ -91,8 +115,5 @@ class MovieAPI:
 
         Returns:
             None: nothing.
-
-        Raises:
-            None: simple include.
         """
         app.include_router(self.router)

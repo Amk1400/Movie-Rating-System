@@ -51,3 +51,14 @@ class MoviesListResponse(BaseModel):
 
     status: Literal["success", "error"]
     data: MoviesPageData
+
+
+class MovieDetailResponse(BaseModel):
+    """Top-level movie detail response.
+
+    Attributes:
+        status (Literal['success']): response status.
+        data (MovieDetailOut): movie detail object.
+    """
+    status: Literal["success"]
+    data: MovieOut

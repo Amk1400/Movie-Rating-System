@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
-from app.exceptions.exceptions import ValidationError
+from app.exceptions.exceptions import ValidationError, NotFoundError
 from app.services.base import BaseService
 
 
@@ -121,3 +121,31 @@ class MovieService(BaseService):
         items: List[Dict[str, Any]] = [self._format_item(i) for i in items_raw]
 
         return {"page": page, "page_size": page_size, "total_items": total_items, "items": items}
+
+    def get_movie_detail(self, movie_id: int) -> Dict[str, Any]:
+        """Return detailed movie payload.
+
+        Args:
+            movie_id (int): movie id.
+
+        Returns:
+            Dict[str, Any]: movie detailed payload.
+
+        Raises:
+            NotFoundError: when movie not found.
+        """
+        raw = self._repo.get_by_id(movie_id)
+        if raw is None:
+            raise NotFoundError("Movie not found")
+        avg = raw.get("average_rating")
+        average_rating = None if avg is None else round(float(avg), 1)
+        return {
+            "id": raw["id"],
+            "title": raw["title"],
+            "release_year": raw.get("release_year"),
+            "director": raw["director"],
+            "genres": raw.get("genres", []),
+            "cast": raw.get("cast"),
+            "average_rating": average_rating,
+            "ratings_count": int(raw.get("ratings_count", 0)),
+        }
