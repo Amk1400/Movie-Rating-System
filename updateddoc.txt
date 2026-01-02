@@ -1,0 +1,4 @@
+pip download poetry -d .docker-deps
+docker pull python:3.12-slim
+
+docker build -t movie_app_test .
