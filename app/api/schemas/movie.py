@@ -1,6 +1,6 @@
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Annotated
 
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints, Field
 
 from app.api.schemas.director import DirectorOut
 
@@ -60,5 +60,20 @@ class MovieDetailResponse(BaseModel):
         status (Literal['success']): response status.
         data (MovieDetailOut): movie detail object.
     """
+    status: Literal["success"]
+    data: MovieOut
+
+
+class MovieCreateRequest(BaseModel):
+    """Request body for creating a movie."""
+    title: Annotated[str, StringConstraints(min_length=1)] = Field(...)
+    director_id: int
+    release_year: Optional[int]
+    cast: Optional[str]
+    genres: List[int]
+
+
+class MovieCreateResponse(BaseModel):
+    """Response for created movie resource."""
     status: Literal["success"]
     data: MovieOut

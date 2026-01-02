@@ -1,9 +1,10 @@
 from typing import Any, Optional
 
 from fastapi import APIRouter, Query, HTTPException, FastAPI, Path
+from starlette import status
 
 from app.api.schemas.base import ErrorResponse, ErrorDetail
-from app.api.schemas.movie import MoviesListResponse, MovieDetailResponse
+from app.api.schemas.movie import MoviesListResponse, MovieDetailResponse, MovieCreateResponse, MovieCreateRequest
 from app.exceptions.exceptions import ValidationError, NotFoundError
 
 
@@ -24,11 +25,7 @@ class MovieAPI:
         self._register_routes()
 
     def _register_routes(self) -> None:
-        """Register router endpoints.
-
-        Returns:
-            None: nothing.
-        """
+        """Register router endpoints."""
 
         @self.router.get(
             "/",
@@ -107,13 +104,44 @@ class MovieAPI:
             except Exception as ex:
                 raise HTTPException(status_code=500, detail=str(ex))
 
+        @self.router.post(
+            "/",
+            response_model=MovieCreateResponse,
+            status_code=status.HTTP_201_CREATED,
+            responses={
+                201: {"description": "Created"},
+                422: {"model": ErrorResponse},
+                500: {"description": "Internal server error"},
+            },
+        )
+        async def create_movie(body: MovieCreateRequest) -> MovieCreateResponse:
+            """Create a new movie.
+
+            Args:
+                body (MovieCreateRequest): movie creation payload.
+
+            Returns:
+                MovieCreateResponse: created movie response.
+
+            Raises:
+                HTTPException: on validation or internal errors.
+            """
+            try:
+                data = self._service.create_movie(
+                    title=body.title,
+                    director_id=body.director_id,
+                    release_year=body.release_year,
+                    cast=body.cast,
+                    genre_ids=body.genres,
+                )
+                return MovieCreateResponse(status="success", data=data)
+            except ValidationError as ve:
+                error_detail = ErrorDetail(code=422, message=str(ve))
+                error_response = ErrorResponse(status="failure", error=error_detail)
+                raise HTTPException(status_code=422, detail=error_response.model_dump())
+            except Exception as ex:
+                raise HTTPException(status_code=500, detail=str(ex))
+
     def register(self, app: FastAPI) -> None:
-        """Include the API router into FastAPI app.
-
-        Args:
-            app (FastAPI): FastAPI application.
-
-        Returns:
-            None: nothing.
-        """
+        """Include the API router into FastAPI app."""
         app.include_router(self.router)
