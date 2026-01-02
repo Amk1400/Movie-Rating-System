@@ -37,7 +37,7 @@ class MovieAPI:
         )
         async def list_movies(
             page: int = Query(1, ge=1),
-            page_size: int = Query(10, ge=1, le=100),
+            page_size: int = Query(10, ge=1),
             title: Optional[str] = Query(None),
             release_year: Optional[int] = Query(None),
             genre: Optional[str] = Query(None),

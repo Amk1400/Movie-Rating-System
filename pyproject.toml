@@ -13,7 +13,8 @@ dependencies = [
     "psycopg2-binary (>=2.9.11,<3.0.0)",
     "psycopg[binary] (>=3.3.2,<4.0.0)",
     "fastapi (>=0.127.0,<0.128.0)",
-    "uvicorn (>=0.40.0,<0.41.0)"
+    "uvicorn (>=0.40.0,<0.41.0)",
+    "dotenv (>=0.9.9,<0.10.0)"
 ]
 
 

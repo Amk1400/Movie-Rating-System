@@ -68,7 +68,7 @@ class MovieCreateRequest(BaseModel):
     """Request body for creating a movie."""
     title: Annotated[str, StringConstraints(min_length=1)] = Field(...)
     director_id: int
-    release_year: Optional[int]
+    release_year: int
     cast: Optional[str]
     genres: List[int]
 
