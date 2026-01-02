@@ -4,7 +4,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.repositories.base import BaseRepository
-from app.models import Genre, Movie, MovieGenre, MovieRating
+from app.models import Genre, Movie, MovieGenre, MovieRating, Director
 
 
 class MovieRepository(BaseRepository):
@@ -194,3 +194,71 @@ class MovieRepository(BaseRepository):
                 "average_rating": avg,
                 "ratings_count": count,
             }
+
+    def create_movie(
+            self,
+            title: str,
+            director_id: int,
+            release_year: Optional[int],
+            cast: Optional[str],
+            genre_ids: List[int],
+    ) -> Dict[str, Any]:
+        """Create movie record and association rows.
+
+        Args:
+            title (str): movie title.
+            director_id (int): director id.
+            release_year (Optional[int]): release year.
+            cast (Optional[str]): cast string.
+            genre_ids (List[int]): list of genre ids.
+
+        Returns:
+            Dict[str, Any]: raw created movie dict.
+
+        Raises:
+            None: caller validates inputs.
+        """
+        with self._session_factory() as session:
+            movie = Movie(title=title, director_id=director_id, release_year=release_year, cast=cast)
+            session.add(movie)
+            session.flush()
+
+            if genre_ids:
+                for gid in genre_ids:
+                    mg = MovieGenre(movie_id=movie.id, genre_id=gid)
+                    session.add(mg)
+
+            session.commit()
+            return self.get_by_id(movie.id)
+
+    def exists_director(self, director_id: int) -> bool:
+        """Return True if director with id exists.
+
+        Args:
+            director_id (int): director id.
+
+        Returns:
+            bool: existence flag.
+
+        Raises:
+            None: simple check.
+        """
+        with self._session_factory() as session:
+            return session.query(Director).filter(Director.id == director_id).first() is not None
+
+    def count_genres_by_ids(self, genre_ids: List[int]) -> int:
+        """Return number of genres that match provided ids.
+
+        Args:
+            genre_ids (List[int]): list of genre ids.
+
+        Returns:
+            int: matched genres count.
+
+        Raises:
+            None: simple count.
+        """
+        if not genre_ids:
+            return 0
+        with self._session_factory() as session:
+            return session.query(func.count(Genre.id)).filter(Genre.id.in_(genre_ids)).scalar() or 0

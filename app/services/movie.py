@@ -149,3 +149,55 @@ class MovieService(BaseService):
             "average_rating": average_rating,
             "ratings_count": int(raw.get("ratings_count", 0)),
         }
+
+    def create_movie(
+            self,
+            title: str,
+            director_id: int,
+            release_year: Optional[int],
+            cast: Optional[str],
+            genre_ids: List[int],
+    ) -> Dict[str, Any]:
+        """Create a new movie after validating inputs.
+
+        Args:
+            title (str): movie title.
+            director_id (int): director id.
+            release_year (Optional[int]): release year.
+            cast (Optional[str]): cast string.
+            genre_ids (List[int]): list of genre ids.
+
+        Returns:
+            Dict[str, Any]: created movie detail payload.
+
+        Raises:
+            ValidationError: when input validation fails.
+        """
+        if not title or not title.strip():
+            raise ValidationError("title is required")
+
+        if release_year is not None:
+            self._validate_release_year(release_year)
+
+        if not self._repo.exists_director(director_id):
+            raise ValidationError("Invalid director_id or genres")
+
+        if genre_ids:
+            matched = self._repo.count_genres_by_ids(genre_ids)
+            if matched != len(genre_ids):
+                raise ValidationError("Invalid director_id or genres")
+
+        raw = self._repo.create_movie(title=title, director_id=director_id, release_year=release_year, cast=cast,
+                                      genre_ids=genre_ids)
+        return {
+            "id": raw["id"],
+            "title": raw["title"],
+            "release_year": raw.get("release_year"),
+            "director": {"id": raw["director"]["id"], "name": raw["director"]["name"],
+                         "birth_year": raw["director"].get("birth_year"),
+                         "description": raw["director"].get("description")},
+            "genres": raw.get("genres", []),
+            "cast": raw.get("cast"),
+            "average_rating": None,
+            "ratings_count": int(raw.get("ratings_count", 0)),
+        }
