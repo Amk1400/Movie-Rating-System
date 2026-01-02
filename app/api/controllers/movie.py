@@ -4,9 +4,8 @@ from fastapi import APIRouter, Query, HTTPException, FastAPI, Path
 from starlette import status
 
 from app.api.schemas.base import ErrorResponse, ErrorDetail
-from app.api.schemas.movie import MoviesListResponse, MovieDetailResponse, MovieCreateResponse, MovieCreateRequest
+from app.api.schemas.movie import MoviesListResponse, MovieDetailResponse, MovieCreateResponse, MovieCreateRequest, MovieUpdateRequest, MovieUpdateResponse
 from app.exceptions.exceptions import ValidationError, NotFoundError
-
 
 class MovieAPI:
     """Movie API router holder."""
@@ -139,6 +138,57 @@ class MovieAPI:
                 error_detail = ErrorDetail(code=422, message=str(ve))
                 error_response = ErrorResponse(status="failure", error=error_detail)
                 raise HTTPException(status_code=422, detail=error_response.model_dump())
+            except Exception as ex:
+                raise HTTPException(status_code=500, detail=str(ex))
+            
+        @self.router.put(
+            "/{movie_id}",
+            response_model=MovieUpdateResponse,
+            responses={
+                404: {"model": ErrorResponse},
+                422: {"model": ErrorResponse},
+                500: {"description": "Internal server error"},
+            },
+        )
+        async def update_movie(movie_id: int = Path(..., gt=0), body: MovieUpdateRequest = ...):
+            try:
+                data = self._service.update_movie(
+                    movie_id=movie_id,
+                    title=body.title,
+                    release_year=body.release_year,
+                    cast=body.cast,
+                    genre_ids=body.genres,
+                )
+                return MovieUpdateResponse(status="success", data=data)
+            except NotFoundError as nf:
+                error_detail = ErrorDetail(code=404, message=str(nf))
+                error_response = ErrorResponse(status="failure", error=error_detail)
+                raise HTTPException(status_code=404, detail=error_response.model_dump())
+            except ValidationError as ve:
+                error_detail = ErrorDetail(code=422, message=str(ve))
+                error_response = ErrorResponse(status="failure", error=error_detail)
+                raise HTTPException(status_code=422, detail=error_response.model_dump())
+            except Exception as ex:
+                raise HTTPException(status_code=500, detail=str(ex))
+
+
+        @self.router.delete(
+            "/{movie_id}",
+            status_code=status.HTTP_204_NO_CONTENT,
+            responses={
+                204: {"description": "No Content"},
+                404: {"model": ErrorResponse},
+                500: {"description": "Internal server error"},
+            },
+        )
+        async def delete_movie(movie_id: int = Path(..., gt=0)):
+            try:
+                self._service.delete_movie(movie_id)
+                return  # FastAPI returns empty body for 204
+            except NotFoundError as nf:
+                error_detail = ErrorDetail(code=404, message=str(nf))
+                error_response = ErrorResponse(status="failure", error=error_detail)
+                raise HTTPException(status_code=404, detail=error_response.model_dump())
             except Exception as ex:
                 raise HTTPException(status_code=500, detail=str(ex))
 

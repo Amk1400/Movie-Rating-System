@@ -1,23 +1,24 @@
-from app.services.base import BaseService
+from typing import Any, Dict
+from app.exceptions.exceptions import NotFoundError, ValidationError
 
+class RatingService:
+    """Business logic for route 7 (post rating)."""
 
-class RatingService(BaseService):
-    """Rating business logic holder.
+    def __init__(self, repo: Any) -> None:
+        self._repo = repo
 
-    Attributes:
-        _repo (Any): RatingRepository instance.
-    """
+    def add_rating(self, movie_id: int, score: int) -> Dict[str, Any]:
+        if not isinstance(score, int) or score < 1 or score > 10:
+            raise ValidationError("Score must be an integer between 1 and 10")
 
-    def __init__(self, repo) -> None:
-        """Construct RatingService.
+        rating = self._repo.add_rating(movie_id, score)
+        if rating is None:
+            raise NotFoundError("Movie not found")
 
-        Args:
-            repo: repository instance.
-
-        Returns:
-            None: nothing.
-
-        Raises:
-            None: simple initializer.
-        """
-        super().__init__(repo)
+        created_at = rating.rated_at.isoformat() if rating.rated_at is not None else None
+        return {
+            "rating_id": rating.id,
+            "movie_id": rating.movie_id,
+            "score": rating.score,
+            "created_at": created_at,
+        }

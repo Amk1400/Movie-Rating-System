@@ -44,7 +44,7 @@ class MovieService(BaseService):
         Raises:
             ValidationError: when pagination values are invalid.
         """
-        if page_size > self._max_page_size:
+        if page_size < 1 or page_size > self._max_page_size:
             raise ValidationError(f"page_size must be between 1 and {self._max_page_size}")
 
     def _validate_release_year(self, release_year: int) -> None:
@@ -57,7 +57,7 @@ class MovieService(BaseService):
             None: nothing.
 
         Raises:
-            ValidationError: when year not in [MIN_RELEASE_YEAR, current_year].
+            ValidationError: when year not in [min_release_year, current_year].
         """
         current_year = datetime.now().year
         if release_year < self._min_release_year or release_year > current_year:
@@ -79,11 +79,16 @@ class MovieService(BaseService):
         avg = raw.get("average_rating")
         average_rating = None if avg is None else round(float(avg), 1)
 
-        director_info = raw.get("director", {})
+        director_info = raw.get("director", {}) or {}
         director_formatted = {"id": director_info.get("id"), "name": director_info.get("name")}
         if detail:
             director_formatted["birth_year"] = director_info.get("birth_year")
             director_formatted["description"] = director_info.get("description")
+
+        # ensure these optional fields are present (so Pydantic validation won't fail)
+        ratings_count_value = raw.get("ratings_count")
+        if ratings_count_value is None:
+            ratings_count_value = 0
 
         output = {
             "id": raw["id"],
@@ -92,10 +97,10 @@ class MovieService(BaseService):
             "director": director_formatted,
             "genres": list(raw.get("genres", [])),
             "average_rating": average_rating,
+            "ratings_count": int(ratings_count_value),
         }
         if detail:
             output["cast"] = raw.get("cast")
-            output["ratings_count"] = int(raw.get("ratings_count", 0))
         return output
 
     def get_movies_paginated(
@@ -129,7 +134,7 @@ class MovieService(BaseService):
         items_raw, total_items = self._repo.list_paginated(
             page, page_size, title=title, release_year=release_year, genre=genre
         )
-        items: List[Dict[str, Any]] = [self._format_output(i) for i in items_raw]
+        items: List[Dict[str, Any]] = [self._format_output(i, detail=False) for i in items_raw]
 
         return {"page": page, "page_size": page_size, "total_items": total_items, "items": items}
 
@@ -173,16 +178,11 @@ class MovieService(BaseService):
         Raises:
             ValidationError: when input validation fails.
         """
-        #if not title or not title.strip():
-            #raise ValidationError("title is required")
-            #////no need because it is handled by pydantic/////
-
         self._validate_release_year(release_year)
 
         if not self._repo.exists_director(director_id):
             raise ValidationError("Invalid director_id or genres")
 
-        #if genre_ids: #////no need because it is handled by pydantic/////
         matched = self._repo.count_genres_by_ids(genre_ids)
         if matched != len(genre_ids):
             raise ValidationError("Invalid director_id or genres")
@@ -191,3 +191,39 @@ class MovieService(BaseService):
             title=title, director_id=director_id, release_year=release_year, cast=cast, genre_ids=genre_ids
         )
         return self._format_output(raw, detail=True)
+
+    def update_movie(
+        self,
+        movie_id: int,
+        title: str,
+        release_year: int,
+        cast: Optional[str],
+        genre_ids: List[int],
+    ) -> Dict[str, Any]:
+        """Update a movie after validating inputs."""
+
+        self._validate_release_year(release_year)
+
+        matched = self._repo.count_genres_by_ids(genre_ids)
+        if matched != len(genre_ids):
+            raise ValidationError("Invalid director_id or genres")
+
+        raw = self._repo.update_movie(
+            movie_id=movie_id,
+            title=title,
+            release_year=release_year,
+            cast=cast,
+            genre_ids=genre_ids,
+        )
+        if raw is None:
+            raise NotFoundError("Movie not found")
+
+        out = self._format_output(raw, detail=True)
+        out["updated_at"] = datetime.utcnow().isoformat() + "Z"
+        return out
+
+    def delete_movie(self, movie_id: int) -> None:
+        """Delete movie or raise NotFoundError."""
+        ok = self._repo.delete_movie(movie_id)
+        if not ok:
+            raise NotFoundError("Movie not found")
