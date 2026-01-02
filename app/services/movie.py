@@ -10,16 +10,17 @@ class MovieService(BaseService):
 
     Attributes:
         _repo (Any): MovieRepository instance.
+        _max_page_size (int): maximum allowed page size.
+        _min_release_year (int): minimum allowed release year.
     """
 
-    MAX_PAGE_SIZE = 100
-    MIN_RELEASE_YEAR = 1500
-
-    def __init__(self, repo: Any) -> None:
+    def __init__(self, repo: Any, max_page_size: int, min_release_year: int) -> None:
         """Construct MovieService.
 
         Args:
             repo (Any): repository instance.
+            max_page_size (int): maximum allowed page size.
+            min_release_year (int): minimum allowed release year.
 
         Returns:
             None: nothing.
@@ -28,12 +29,13 @@ class MovieService(BaseService):
             None: initializer.
         """
         super().__init__(repo)
+        self._max_page_size = max_page_size
+        self._min_release_year = min_release_year
 
-    def _validate_pagination(self, page: int, page_size: int) -> None:
+    def _validate_pagination(self, page_size: int) -> None:
         """Validate pagination parameters.
 
         Args:
-            page (int): page number.
             page_size (int): items per page.
 
         Returns:
@@ -42,10 +44,8 @@ class MovieService(BaseService):
         Raises:
             ValidationError: when pagination values are invalid.
         """
-        if page < 1:
-            raise ValidationError("page must be >= 1")
-        if page_size < 1 or page_size > self.MAX_PAGE_SIZE:
-            raise ValidationError(f"page_size must be between 1 and {self.MAX_PAGE_SIZE}")
+        if page_size > self._max_page_size:
+            raise ValidationError(f"page_size must be between 1 and {self._max_page_size}")
 
     def _validate_release_year(self, release_year: int) -> None:
         """Validate release_year is within allowed historical range.
@@ -57,17 +57,18 @@ class MovieService(BaseService):
             None: nothing.
 
         Raises:
-            ValidationError: when year not in [1500, current_year].
+            ValidationError: when year not in [MIN_RELEASE_YEAR, current_year].
         """
         current_year = datetime.now().year
-        if release_year < self.MIN_RELEASE_YEAR or release_year > current_year:
+        if release_year < self._min_release_year or release_year > current_year:
             raise ValidationError("Invalid release_year")
 
-    def _format_item(self, raw: Dict[str, Any]) -> Dict[str, Any]:
-        """Format raw repository movie into API output shape.
+    def _format_output(self, raw: Dict[str, Any], detail: bool = False) -> Dict[str, Any]:
+        """Common output formatter for movie dicts.
 
         Args:
             raw (Dict[str, Any]): raw movie dict.
+            detail (bool): include full details if True.
 
         Returns:
             Dict[str, Any]: formatted movie output.
@@ -78,14 +79,24 @@ class MovieService(BaseService):
         avg = raw.get("average_rating")
         average_rating = None if avg is None else round(float(avg), 1)
 
-        return {
+        director_info = raw.get("director", {})
+        director_formatted = {"id": director_info.get("id"), "name": director_info.get("name")}
+        if detail:
+            director_formatted["birth_year"] = director_info.get("birth_year")
+            director_formatted["description"] = director_info.get("description")
+
+        output = {
             "id": raw["id"],
             "title": raw["title"],
             "release_year": raw.get("release_year"),
-            "director": {"id": raw["director"]["id"], "name": raw["director"]["name"]},
+            "director": director_formatted,
             "genres": list(raw.get("genres", [])),
             "average_rating": average_rating,
         }
+        if detail:
+            output["cast"] = raw.get("cast")
+            output["ratings_count"] = int(raw.get("ratings_count", 0))
+        return output
 
     def get_movies_paginated(
         self,
@@ -111,14 +122,14 @@ class MovieService(BaseService):
             ValidationError: when pagination or release_year args are invalid.
             Exception: when repository access fails.
         """
-        self._validate_pagination(page, page_size)
+        self._validate_pagination(page_size)
         if release_year is not None:
             self._validate_release_year(release_year)
 
         items_raw, total_items = self._repo.list_paginated(
             page, page_size, title=title, release_year=release_year, genre=genre
         )
-        items: List[Dict[str, Any]] = [self._format_item(i) for i in items_raw]
+        items: List[Dict[str, Any]] = [self._format_output(i) for i in items_raw]
 
         return {"page": page, "page_size": page_size, "total_items": total_items, "items": items}
 
@@ -137,26 +148,15 @@ class MovieService(BaseService):
         raw = self._repo.get_by_id(movie_id)
         if raw is None:
             raise NotFoundError("Movie not found")
-        avg = raw.get("average_rating")
-        average_rating = None if avg is None else round(float(avg), 1)
-        return {
-            "id": raw["id"],
-            "title": raw["title"],
-            "release_year": raw.get("release_year"),
-            "director": raw["director"],
-            "genres": raw.get("genres", []),
-            "cast": raw.get("cast"),
-            "average_rating": average_rating,
-            "ratings_count": int(raw.get("ratings_count", 0)),
-        }
+        return self._format_output(raw, detail=True)
 
     def create_movie(
-            self,
-            title: str,
-            director_id: int,
-            release_year: Optional[int],
-            cast: Optional[str],
-            genre_ids: List[int],
+        self,
+        title: str,
+        director_id: int,
+        release_year: Optional[int],
+        cast: Optional[str],
+        genre_ids: List[int],
     ) -> Dict[str, Any]:
         """Create a new movie after validating inputs.
 
@@ -173,31 +173,21 @@ class MovieService(BaseService):
         Raises:
             ValidationError: when input validation fails.
         """
-        if not title or not title.strip():
-            raise ValidationError("title is required")
+        #if not title or not title.strip():
+            #raise ValidationError("title is required")
+            #////no need because it is handled by pydantic/////
 
-        if release_year is not None:
-            self._validate_release_year(release_year)
+        self._validate_release_year(release_year)
 
         if not self._repo.exists_director(director_id):
             raise ValidationError("Invalid director_id or genres")
 
-        if genre_ids:
-            matched = self._repo.count_genres_by_ids(genre_ids)
-            if matched != len(genre_ids):
-                raise ValidationError("Invalid director_id or genres")
+        #if genre_ids: #////no need because it is handled by pydantic/////
+        matched = self._repo.count_genres_by_ids(genre_ids)
+        if matched != len(genre_ids):
+            raise ValidationError("Invalid director_id or genres")
 
-        raw = self._repo.create_movie(title=title, director_id=director_id, release_year=release_year, cast=cast,
-                                      genre_ids=genre_ids)
-        return {
-            "id": raw["id"],
-            "title": raw["title"],
-            "release_year": raw.get("release_year"),
-            "director": {"id": raw["director"]["id"], "name": raw["director"]["name"],
-                         "birth_year": raw["director"].get("birth_year"),
-                         "description": raw["director"].get("description")},
-            "genres": raw.get("genres", []),
-            "cast": raw.get("cast"),
-            "average_rating": None,
-            "ratings_count": int(raw.get("ratings_count", 0)),
-        }
+        raw = self._repo.create_movie(
+            title=title, director_id=director_id, release_year=release_year, cast=cast, genre_ids=genre_ids
+        )
+        return self._format_output(raw, detail=True)

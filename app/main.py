@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 
 from app.db.database import init_engine, close_engine, get_sessionmaker
 from app.repositories.director import DirectorRepository
@@ -42,6 +43,9 @@ class AppState:
         self.movie_api = movie_api
         self.rating_api = rating_api
 
+load_dotenv()
+MAX_PAGE_SIZE = int(os.getenv("MAX_PAGE_SIZE"))
+MIN_RELEASE_YEAR = int(os.getenv("MIN_RELEASE_YEAR"))
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -53,10 +57,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     Returns:
         AsyncIterator[None]: lifecycle context.
     """
-    database_url = os.getenv(
-        "DATABASE_URL",
-        "postgresql+psycopg://postgres:secret@localhost:5432/movie_db",
-    )
+    database_url = os.getenv("DATABASE_URL")
     init_engine(database_url)
 
     session_factory = get_sessionmaker()
@@ -68,7 +69,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
     director_service = DirectorService(director_repo)
     genre_service = GenreService(genre_repo)
-    movie_service = MovieService(movie_repo)
+    movie_service = MovieService(movie_repo,MAX_PAGE_SIZE,MIN_RELEASE_YEAR)
     rating_service = RatingService(rating_repo)
 
     director_api = DirectorAPI(director_service)

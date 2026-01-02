@@ -18,7 +18,7 @@ class MovieRepository(BaseRepository):
         """Construct MovieRepository.
 
         Args:
-            session_factory (Any): sessionmaker or factory.
+            session_factory (Any): session maker or factory.
 
         Returns:
             None: nothing.
@@ -57,6 +57,72 @@ class MovieRepository(BaseRepository):
             query = query.join(Movie.genres).join(MovieGenre.genre).filter(Genre.name == genre)
         return query
 
+    def _format_movie(self, movie: Movie, ratings: dict = None) -> Dict[str, Any]:
+        """Format movie with genres, director, and optional average rating.
+
+        Args:
+            movie (Movie): SQLAlchemy Movie instance.
+            ratings (dict): optional movie_id to average_rating map.
+
+        Returns:
+            Dict[str, Any]: formatted movie data.
+
+        Raises:
+            None: pure formatter.
+        """
+        genre_names = [mg.genre.name for mg in movie.genres if mg.genre and mg.genre.name]
+        director_dict = {
+            "id": movie.director.id if movie.director else None,
+            "name": movie.director.name if movie.director else None,
+            "birth_year": getattr(movie.director, "birth_year", None),
+            "description": getattr(movie.director, "description", None),
+        } if getattr(movie, "director", None) else {}
+
+        avg = ratings.get(movie.id) if ratings else None
+
+        return {
+            "id": movie.id,
+            "title": movie.title,
+            "release_year": movie.release_year,
+            "cast": getattr(movie, "cast", None),
+            "director": director_dict,
+            "genres": genre_names,
+            "average_rating": float(avg) if avg is not None else None,
+            "ratings_count": getattr(movie, "ratings_count", 0),
+        }
+
+    def _fetch_movies_with_ratings(self, session, movies: List[Movie]) -> List[Dict[str, Any]]:
+        """Fetch related ratings and format movies for given list.
+
+        Args:
+            session: SQLAlchemy session.
+            movies (List[Movie]): list of Movie instances.
+
+        Returns:
+            List[Dict[str, Any]]: formatted movie dicts.
+
+        Raises:
+            None: pure fetch/format.
+        """
+        movie_ids = [m.id for m in movies]
+        ratings: Dict[int, float] = {}
+
+        if movie_ids:
+            rows = (
+                session.query(MovieRating.movie_id, func.avg(MovieRating.score).label("avg"))
+                .filter(MovieRating.movie_id.in_(movie_ids))
+                .group_by(MovieRating.movie_id)
+                .all()
+            )
+            ratings = {r.movie_id: float(r.avg) for r in rows}
+
+        for m in movies:
+            if not hasattr(m, "ratings_count"):
+                row_count = session.query(func.count(MovieRating.id)).filter(MovieRating.movie_id == m.id).scalar()
+                m.ratings_count = int(row_count or 0)
+
+        return [self._format_movie(m, ratings) for m in movies]
+
     def list_paginated(
         self,
         page: int,
@@ -75,7 +141,7 @@ class MovieRepository(BaseRepository):
             genre (Optional[str]): filter by genre name.
 
         Returns:
-            Tuple[List[Dict[str, Any]], int]: list of raw items and total count.
+            Tuple[List[Dict[str, Any]], int]: list of formatted movies and total count.
 
         Raises:
             ValueError: if page or page_size invalid.
@@ -95,43 +161,9 @@ class MovieRepository(BaseRepository):
             total_q = self._apply_filters(total_q.select_from(Movie), title=title, release_year=release_year, genre=genre)
             total_items = int(total_q.scalar() or 0)
 
-            movies_query = filtered_q.order_by(Movie.id).distinct(Movie.id).offset(offset).limit(page_size)
-            movies = movies_query.all()
+            movies = filtered_q.order_by(Movie.id).distinct(Movie.id).offset(offset).limit(page_size).all()
 
-            movie_ids = [m.id for m in movies]
-            ratings: Dict[int, float] = {}
-            if movie_ids:
-                rows = (
-                    session.query(MovieRating.movie_id, func.avg(MovieRating.score).label("avg"))
-                    .filter(MovieRating.movie_id.in_(movie_ids))
-                    .group_by(MovieRating.movie_id)
-                    .all()
-                )
-                ratings = {r.movie_id: float(r.avg) for r in rows}
-
-            items: List[Dict[str, Any]] = []
-            for m in movies:
-                genre_names: List[str] = []
-                for mg in m.genres:
-                    g = getattr(mg, "genre", None)
-                    if g is not None and getattr(g, "name", None) is not None:
-                        genre_names.append(g.name)
-                director_dict = {
-                    "id": getattr(m.director, "id", None),
-                    "name": getattr(m.director, "name", None),
-                }
-                avg = ratings.get(m.id)
-                items.append(
-                    {
-                        "id": m.id,
-                        "title": m.title,
-                        "release_year": m.release_year,
-                        "director": director_dict,
-                        "genres": genre_names,
-                        "average_rating": avg,
-                    }
-                )
-
+            items = self._fetch_movies_with_ratings(session, movies)
             return items, total_items
 
     def get_by_id(self, movie_id: int) -> Optional[Dict[str, Any]]:
@@ -141,13 +173,13 @@ class MovieRepository(BaseRepository):
             movie_id (int): movie primary key.
 
         Returns:
-            Optional[Dict[str, Any]]: raw movie dict or None.
+            Optional[Dict[str, Any]]: formatted movie dict or None.
 
         Raises:
             None: returns None if not found.
         """
         with self._session_factory() as session:
-            m = (
+            movie = (
                 session.query(Movie)
                 .options(
                     joinedload(Movie.director),
@@ -156,52 +188,26 @@ class MovieRepository(BaseRepository):
                 .filter(Movie.id == movie_id)
                 .one_or_none()
             )
-            if m is None:
+            if not movie:
                 return None
 
-            # average rating and count
-            row = (
-                session.query(
-                    func.avg(MovieRating.score).label("avg"),
-                    func.count(MovieRating.id).label("count"),
-                )
-                .filter(MovieRating.movie_id == movie_id)
-                .one()
-            )
-            avg = float(row.avg) if row.avg is not None else None
-            count = int(row.count or 0)
+            row = session.query(
+                func.avg(MovieRating.score).label("avg"),
+                func.count(MovieRating.id).label("count"),
+            ).filter(MovieRating.movie_id == movie_id).one()
 
-            genre_names: List[str] = []
-            for mg in m.genres:
-                g = getattr(mg, "genre", None)
-                if g is not None and getattr(g, "name", None) is not None:
-                    genre_names.append(g.name)
+            movie.ratings_count = int(row.count or 0)
 
-            director_dict = {
-                "id": getattr(m.director, "id", None),
-                "name": getattr(m.director, "name", None),
-                "birth_year": getattr(m.director, "birth_year", None),
-                "description": getattr(m.director, "description", None),
-            }
-
-            return {
-                "id": m.id,
-                "title": m.title,
-                "release_year": m.release_year,
-                "director": director_dict,
-                "genres": genre_names,
-                "cast": m.cast,
-                "average_rating": avg,
-                "ratings_count": count,
-            }
+            items = self._fetch_movies_with_ratings(session, [movie])
+            return items[0] if items else None
 
     def create_movie(
-            self,
-            title: str,
-            director_id: int,
-            release_year: Optional[int],
-            cast: Optional[str],
-            genre_ids: List[int],
+        self,
+        title: str,
+        director_id: int,
+        release_year: Optional[int],
+        cast: Optional[str],
+        genre_ids: List[int],
     ) -> Dict[str, Any]:
         """Create movie record and association rows.
 
@@ -213,7 +219,7 @@ class MovieRepository(BaseRepository):
             genre_ids (List[int]): list of genre ids.
 
         Returns:
-            Dict[str, Any]: raw created movie dict.
+            Dict[str, Any]: formatted created movie dict.
 
         Raises:
             None: caller validates inputs.
