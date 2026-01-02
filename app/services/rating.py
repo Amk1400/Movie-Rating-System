@@ -15,7 +15,7 @@ class RatingService:
         if rating is None:
             raise NotFoundError("Movie not found")
 
-        created_at = rating.reated_at.isoformat() if rating.reated_at is not None else None
+        created_at = rating.rated_at.isoformat() if rating.rated_at is not None else None
         return {
             "rating_id": rating.id,
             "movie_id": rating.movie_id,

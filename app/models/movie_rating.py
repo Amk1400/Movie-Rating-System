@@ -17,6 +17,6 @@ class MovieRating(Base):
     id = Column(Integer, primary_key=True)
     movie_id = Column(Integer, ForeignKey("movies.id"), nullable=False)
     score = Column(Integer, nullable=False)
-    rated_at = Column(DateTime(timezone=True), server_default=func.now())
+    rated_at = Column(DateTime(timezone=True), nullable=False)
 
     movie = relationship("Movie", back_populates="ratings")

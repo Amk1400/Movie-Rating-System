@@ -1,7 +1,6 @@
 from typing import Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sqlalchemy import func
 from app.repositories.base import BaseRepository
 from app.models import Movie, MovieRating
 
@@ -15,7 +14,12 @@ class RatingRepository(BaseRepository):
             if movie is None:
                 return None
 
-            rating = MovieRating(movie_id=movie_id, score=score)
+            rating = MovieRating(
+                movie_id=movie_id,
+                score=score,
+                rated_at=datetime.now(timezone.utc)
+            )
+
             session.add(rating)
             session.commit()
             session.refresh(rating)
