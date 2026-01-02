@@ -192,6 +192,6 @@ class MovieAPI:
             except Exception as ex:
                 raise HTTPException(status_code=500, detail=str(ex))
 
-            def register(self, app: FastAPI) -> None:
-                """Include the API router into FastAPI app."""
-                app.include_router(self.router)
+    def register(self, app: FastAPI) -> None:
+        """Include the API router into FastAPI app."""
+        app.include_router(self.router)
