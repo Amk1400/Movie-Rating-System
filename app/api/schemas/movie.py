@@ -23,6 +23,7 @@ class MovieOut(BaseModel):
     director: DirectorOut
     genres: List[str]
     average_rating: Optional[float]
+    ratings_count: Optional[int]
 
 
 class MoviesPageData(BaseModel):
