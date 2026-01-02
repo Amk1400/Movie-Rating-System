@@ -268,3 +268,52 @@ class MovieRepository(BaseRepository):
             return 0
         with self._session_factory() as session:
             return session.query(func.count(Genre.id)).filter(Genre.id.in_(genre_ids)).scalar() or 0
+
+    def update_movie(
+        self,
+        movie_id: int,
+        title: str,
+        release_year: Optional[int],
+        cast: Optional[str],
+        genre_ids: List[int],
+    ) -> Optional[Dict[str, Any]]:
+        with self._session_factory() as session:
+            movie = session.query(Movie).filter(Movie.id == movie_id).one_or_none()
+            if movie is None:
+                return None
+
+            # update movie fields
+            movie.title = title
+            movie.release_year = release_year
+            movie.cast = cast
+
+            # sync genres in association table (MovieGenre)
+            existing = session.query(MovieGenre).filter(MovieGenre.movie_id == movie_id).all()
+            existing_ids = {mg.genre_id for mg in existing}
+            new_ids = set(genre_ids or [])
+
+            # delete removed
+            for mg in existing:
+                if mg.genre_id not in new_ids:
+                    session.delete(mg)
+
+            # add added
+            for gid in new_ids - existing_ids:
+                session.add(MovieGenre(movie_id=movie_id, genre_id=gid))
+
+            session.commit()
+            return self.get_by_id(movie_id)
+
+    def delete_movie(self, movie_id: int) -> bool:
+        with self._session_factory() as session:
+            movie = session.query(Movie).filter(Movie.id == movie_id).one_or_none()
+            if movie is None:
+                return False
+
+            # delete dependent rows (as required by doc)
+            session.query(MovieGenre).filter(MovieGenre.movie_id == movie_id).delete(synchronize_session=False)
+            session.query(MovieRating).filter(MovieRating.movie_id == movie_id).delete(synchronize_session=False)
+
+            session.delete(movie)
+            session.commit()
+            return True

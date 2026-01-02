@@ -1,24 +1,22 @@
-from typing import Any
-from app.repositories.base import BaseRepository
+from typing import Any, Optional
+from datetime import datetime
 
+from sqlalchemy import func
+from app.repositories.base import BaseRepository
+from app.models import Movie, MovieRating
 
 class RatingRepository(BaseRepository):
-    """Repository for rating-related DB access.
-
-    Attributes:
-        _session_factory (Any): session factory.
-    """
-
     def __init__(self, session_factory: Any) -> None:
-        """Construct RatingRepository.
-
-        Args:
-            session_factory (Any): sessionmaker or factory.
-
-        Returns:
-            None: nothing.
-
-        Raises:
-            None: simple initializer.
-        """
         super().__init__(session_factory)
+
+    def add_rating(self, movie_id: int, score: int) -> Optional[MovieRating]:
+        with self._session_factory() as session:
+            movie = session.query(Movie).filter(Movie.id == movie_id).one_or_none()
+            if movie is None:
+                return None
+
+            rating = MovieRating(movie_id=movie_id, score=score)
+            session.add(rating)
+            session.commit()
+            session.refresh(rating)
+            return rating

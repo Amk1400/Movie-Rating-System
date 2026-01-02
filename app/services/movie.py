@@ -191,3 +191,41 @@ class MovieService(BaseService):
             title=title, director_id=director_id, release_year=release_year, cast=cast, genre_ids=genre_ids
         )
         return self._format_output(raw, detail=True)
+
+    def update_movie(
+        self,
+        movie_id: int,
+        title: str,
+        release_year: int,
+        cast: Optional[str],
+        genre_ids: List[int],
+    ) -> Dict[str, Any]:
+        # validate year range
+        self._validate_release_year(release_year)
+
+        # validate genres ids exist
+        matched = self._repo.count_genres_by_ids(genre_ids)
+        if matched != len(genre_ids):
+            raise ValidationError("Invalid director_id or genres")
+
+        raw = self._repo.update_movie(
+            movie_id=movie_id,
+            title=title,
+            release_year=release_year,
+            cast=cast,
+            genre_ids=genre_ids,
+        )
+        if raw is None:
+            raise NotFoundError("Movie not found")
+
+        # doc sample shows updated_at; your DB doesn't store it, so we can add it virtually
+        out = self._format_output(raw, detail=True)
+        out["updated_at"] = datetime.utcnow().isoformat() + "Z"
+        return out
+
+    def delete_movie(self, movie_id: int) -> None:
+        ok = self._repo.delete_movie(movie_id)
+        if not ok:
+            raise NotFoundError("Movie not found")
+        
+    

@@ -77,3 +77,15 @@ class MovieCreateResponse(BaseModel):
     """Response for created movie resource."""
     status: Literal["success"]
     data: MovieOut
+
+class MovieUpdateRequest(BaseModel):
+    """Request body for updating a movie."""
+    title: Annotated[str, StringConstraints(min_length=1)] = Field(...)
+    release_year: int
+    cast: Optional[str]
+    genres: List[int]
+
+
+class MovieUpdateResponse(BaseModel):
+    status: Literal["success"]
+    data: MovieOut
