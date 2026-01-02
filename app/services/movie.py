@@ -1,4 +1,5 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+from datetime import datetime
 
 from app.exceptions.exceptions import ValidationError
 from app.services.base import BaseService
@@ -12,6 +13,7 @@ class MovieService(BaseService):
     """
 
     MAX_PAGE_SIZE = 100
+    MIN_RELEASE_YEAR = 1500
 
     def __init__(self, repo: Any) -> None:
         """Construct MovieService.
@@ -23,7 +25,7 @@ class MovieService(BaseService):
             None: nothing.
 
         Raises:
-            None: simple initializer.
+            None: initializer.
         """
         super().__init__(repo)
 
@@ -45,6 +47,22 @@ class MovieService(BaseService):
         if page_size < 1 or page_size > self.MAX_PAGE_SIZE:
             raise ValidationError(f"page_size must be between 1 and {self.MAX_PAGE_SIZE}")
 
+    def _validate_release_year(self, release_year: int) -> None:
+        """Validate release_year is within allowed historical range.
+
+        Args:
+            release_year (int): year to validate.
+
+        Returns:
+            None: nothing.
+
+        Raises:
+            ValidationError: when year not in [1500, current_year].
+        """
+        current_year = datetime.now().year
+        if release_year < self.MIN_RELEASE_YEAR or release_year > current_year:
+            raise ValidationError("Invalid release_year")
+
     def _format_item(self, raw: Dict[str, Any]) -> Dict[str, Any]:
         """Format raw repository movie into API output shape.
 
@@ -53,6 +71,9 @@ class MovieService(BaseService):
 
         Returns:
             Dict[str, Any]: formatted movie output.
+
+        Raises:
+            None: pure formatter.
         """
         avg = raw.get("average_rating")
         average_rating = None if avg is None else round(float(avg), 1)
@@ -61,36 +82,42 @@ class MovieService(BaseService):
             "id": raw["id"],
             "title": raw["title"],
             "release_year": raw.get("release_year"),
-            "director": {
-                "id": raw["director"]["id"],
-                "name": raw["director"]["name"],
-            },
+            "director": {"id": raw["director"]["id"], "name": raw["director"]["name"]},
             "genres": list(raw.get("genres", [])),
             "average_rating": average_rating,
         }
 
-    def get_movies_paginated(self, page: int = 1, page_size: int = 10) -> Dict[str, Any]:
-        """Return paginated movies payload.
+    def get_movies_paginated(
+        self,
+        page: int = 1,
+        page_size: int = 10,
+        title: Optional[str] = None,
+        release_year: Optional[int] = None,
+        genre: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Return paginated movies payload with optional filters.
 
         Args:
             page (int): page number.
             page_size (int): items per page.
+            title (Optional[str]): partial title to search.
+            release_year (Optional[int]): filter by release year.
+            genre (Optional[str]): filter by genre name.
 
         Returns:
             Dict[str, Any]: pagination-compatible movie payload.
 
         Raises:
-            ValidationError: when pagination args are invalid.
+            ValidationError: when pagination or release_year args are invalid.
             Exception: when repository access fails.
         """
         self._validate_pagination(page, page_size)
+        if release_year is not None:
+            self._validate_release_year(release_year)
 
-        items_raw, total_items = self._repo.list_paginated(page, page_size)
+        items_raw, total_items = self._repo.list_paginated(
+            page, page_size, title=title, release_year=release_year, genre=genre
+        )
         items: List[Dict[str, Any]] = [self._format_item(i) for i in items_raw]
 
-        return {
-            "page": page,
-            "page_size": page_size,
-            "total_items": total_items,
-            "items": items,
-        }
+        return {"page": page, "page_size": page_size, "total_items": total_items, "items": items}
