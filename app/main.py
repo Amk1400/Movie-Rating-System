@@ -6,6 +6,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
+from app.logging_config import setup_logging
+
 from app.db.database import init_engine, close_engine, get_sessionmaker
 from app.repositories.director import DirectorRepository
 from app.repositories.genre import GenreRepository
@@ -43,9 +45,13 @@ class AppState:
         self.movie_api = movie_api
         self.rating_api = rating_api
 
+
 load_dotenv()
+setup_logging()
+
 MAX_PAGE_SIZE = int(os.getenv("MAX_PAGE_SIZE"))
 MIN_RELEASE_YEAR = int(os.getenv("MIN_RELEASE_YEAR"))
+
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -69,7 +75,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
 
     director_service = DirectorService(director_repo)
     genre_service = GenreService(genre_repo)
-    movie_service = MovieService(movie_repo,MAX_PAGE_SIZE,MIN_RELEASE_YEAR)
+    movie_service = MovieService(movie_repo, MAX_PAGE_SIZE, MIN_RELEASE_YEAR)
     rating_service = RatingService(rating_repo)
 
     director_api = DirectorAPI(director_service)

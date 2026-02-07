@@ -1,11 +1,23 @@
 from typing import Any, Optional
+import logging
+import time
 
 from fastapi import APIRouter, Query, HTTPException, FastAPI, Path
 from starlette import status
 
 from app.api.schemas.base import ErrorResponse, ErrorDetail
-from app.api.schemas.movie import MoviesListResponse, MovieDetailResponse, MovieCreateResponse, MovieCreateRequest, MovieUpdateRequest, MovieUpdateResponse
+from app.api.schemas.movie import (
+    MoviesListResponse,
+    MovieDetailResponse,
+    MovieCreateResponse,
+    MovieCreateRequest,
+    MovieUpdateRequest,
+    MovieUpdateResponse,
+)
 from app.exceptions.exceptions import ValidationError, NotFoundError
+
+logger = logging.getLogger("movie_rating")
+
 
 class MovieAPI:
     """Movie API router holder."""
@@ -41,31 +53,61 @@ class MovieAPI:
             release_year: Optional[int] = Query(None),
             genre: Optional[str] = Query(None),
         ) -> MoviesListResponse:
-            """List movies with pagination and optional filters.
+            """List movies with pagination and optional filters."""
+            route = "/api/v1/movies"
+            start = time.perf_counter()
 
-            Args:
-                page (int): page number.
-                page_size (int): items per page.
-                title (Optional[str]): partial title to search.
-                release_year (Optional[int]): filter by release year.
-                genre (Optional[str]): filter by genre name.
+            logger.info(
+                "List movies requested (route=%s, page=%s, page_size=%s, title=%s, release_year=%s, genre=%s)",
+                route,
+                page,
+                page_size,
+                title,
+                release_year,
+                genre,
+            )
 
-            Returns:
-                MoviesListResponse: paginated movies response.
-
-            Raises:
-                HTTPException: on validation or internal errors.
-            """
             try:
                 data = self._service.get_movies_paginated(
-                    page=page, page_size=page_size, title=title, release_year=release_year, genre=genre
+                    page=page,
+                    page_size=page_size,
+                    title=title,
+                    release_year=release_year,
+                    genre=genre,
+                )
+
+                duration_ms = int((time.perf_counter() - start) * 1000)
+                logger.info(
+                    "List movies success (route=%s, page=%s, page_size=%s, returned=%s, total_items=%s, duration_ms=%s)",
+                    route,
+                    page,
+                    page_size,
+                    len(data.get("items", [])),
+                    data.get("total_items"),
+                    duration_ms,
                 )
                 return MoviesListResponse(status="success", data=data)
+
             except ValidationError as ve:
+                duration_ms = int((time.perf_counter() - start) * 1000)
+                logger.warning(
+                    "List movies validation failed (route=%s, duration_ms=%s, error=%s)",
+                    route,
+                    duration_ms,
+                    str(ve),
+                )
                 error_detail = ErrorDetail(code=422, message=str(ve))
                 error_response = ErrorResponse(status="failure", error=error_detail)
                 raise HTTPException(status_code=422, detail=error_response.model_dump())
+
             except Exception as ex:
+                duration_ms = int((time.perf_counter() - start) * 1000)
+                logger.error(
+                    "List movies failed (route=%s, duration_ms=%s)",
+                    route,
+                    duration_ms,
+                    exc_info=True,
+                )
                 raise HTTPException(status_code=500, detail=str(ex))
 
         @self.router.get(
@@ -78,17 +120,7 @@ class MovieAPI:
             },
         )
         async def get_movie(movie_id: int = Path(..., gt=0)) -> MovieDetailResponse:
-            """Get detailed movie by id.
-
-            Args:
-                movie_id (int): movie id path parameter.
-
-            Returns:
-                MovieDetailResponse: detailed movie response.
-
-            Raises:
-                HTTPException: on not found or other errors.
-            """
+            """Get detailed movie by id."""
             try:
                 data = self._service.get_movie_detail(movie_id)
                 return MovieDetailResponse(status="success", data=data)
@@ -114,17 +146,7 @@ class MovieAPI:
             },
         )
         async def create_movie(body: MovieCreateRequest) -> MovieCreateResponse:
-            """Create a new movie.
-
-            Args:
-                body (MovieCreateRequest): movie creation payload.
-
-            Returns:
-                MovieCreateResponse: created movie response.
-
-            Raises:
-                HTTPException: on validation or internal errors.
-            """
+            """Create a new movie."""
             try:
                 data = self._service.create_movie(
                     title=body.title,
@@ -140,7 +162,7 @@ class MovieAPI:
                 raise HTTPException(status_code=422, detail=error_response.model_dump())
             except Exception as ex:
                 raise HTTPException(status_code=500, detail=str(ex))
-            
+
         @self.router.put(
             "/{movie_id}",
             response_model=MovieUpdateResponse,
@@ -170,7 +192,6 @@ class MovieAPI:
                 raise HTTPException(status_code=422, detail=error_response.model_dump())
             except Exception as ex:
                 raise HTTPException(status_code=500, detail=str(ex))
-
 
         @self.router.delete(
             "/{movie_id}",
